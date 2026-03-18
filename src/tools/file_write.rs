@@ -4,6 +4,13 @@ use async_trait::async_trait;
 use serde_json::json;
 use std::sync::Arc;
 
+fn sea_forge_file_write_decision() -> Option<String> {
+    crate::security::sea_authority::env_override_reason(
+        "SEA_FORGE_FILE_WRITE_DECISION",
+        "SEA_FORGE_FILE_WRITE_REASON",
+    )
+}
+
 /// Write file contents with path sandboxing
 pub struct FileWriteTool {
     security: Arc<SecurityPolicy>,
@@ -52,6 +59,31 @@ impl Tool for FileWriteTool {
             .get("content")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'content' parameter"))?;
+
+        if let Some(reason) = sea_forge_file_write_decision() {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(reason),
+            });
+        }
+
+        if let Some(reason) = crate::security::sea_authority::evaluate_action(
+            &self.security.workspace_dir,
+            "file_write",
+            "write",
+            "file",
+            path,
+            json!({"path": path}),
+        )
+        .await?
+        {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(reason),
+            });
+        }
 
         if !self.security.can_act() {
             return Ok(ToolResult {
@@ -405,6 +437,33 @@ mod tests {
             .contains("Rate limit exceeded"));
         assert!(!dir.join("out.txt").exists());
 
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    #[tokio::test]
+    async fn file_write_blocks_when_sea_forge_denies_action() {
+        let dir = std::env::temp_dir().join("zeroclaw_test_file_write_sea_forge_denied");
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+
+        std::env::set_var("SEA_FORGE_FILE_WRITE_DECISION", "deny");
+        std::env::set_var("SEA_FORGE_FILE_WRITE_REASON", "blocked by sea authority");
+
+        let tool = FileWriteTool::new(test_security(dir.clone()));
+        let result = tool
+            .execute(json!({"path": "blocked.txt", "content": "nope"}))
+            .await
+            .unwrap();
+
+        assert!(!result.success);
+        assert_eq!(
+            result.error.as_deref(),
+            Some("Action blocked by SEA Forge: blocked by sea authority")
+        );
+        assert!(!dir.join("blocked.txt").exists());
+
+        std::env::remove_var("SEA_FORGE_FILE_WRITE_DECISION");
+        std::env::remove_var("SEA_FORGE_FILE_WRITE_REASON");
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 

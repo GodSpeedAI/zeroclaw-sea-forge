@@ -52,6 +52,13 @@ impl ShellTool {
     }
 }
 
+fn sea_forge_shell_decision() -> Option<String> {
+    crate::security::sea_authority::env_override_reason(
+        "SEA_FORGE_SHELL_DECISION",
+        "SEA_FORGE_SHELL_REASON",
+    )
+}
+
 fn is_valid_env_var_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
@@ -117,6 +124,31 @@ impl Tool for ShellTool {
             .get("approved")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+
+        if let Some(reason) = sea_forge_shell_decision() {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(reason),
+            });
+        }
+
+        if let Some(reason) = crate::security::sea_authority::evaluate_action(
+            &self.security.workspace_dir,
+            "shell",
+            "shell_exec",
+            "shell_cmd",
+            command,
+            json!({"command": command, "approved": approved}),
+        )
+        .await?
+        {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(reason),
+            });
+        }
 
         if self.security.is_rate_limited() {
             return Ok(ToolResult {
@@ -576,6 +608,44 @@ mod tests {
 
         let _ =
             tokio::fs::remove_file(std::env::temp_dir().join("zeroclaw_shell_approval_test")).await;
+    }
+
+    #[tokio::test]
+    async fn shell_blocks_when_sea_forge_denies_action() {
+        let blocked_path = std::env::temp_dir().join("zeroclaw_shell_sea_forge_denied");
+        let _ = tokio::fs::remove_file(&blocked_path).await;
+
+        std::env::set_var("SEA_FORGE_SHELL_DECISION", "deny");
+        std::env::set_var(
+            "SEA_FORGE_SHELL_REASON",
+            "shell command blocked by sea authority",
+        );
+
+        let security = Arc::new(SecurityPolicy {
+            autonomy: AutonomyLevel::Supervised,
+            allowed_commands: vec!["touch".into()],
+            workspace_dir: std::env::temp_dir(),
+            ..SecurityPolicy::default()
+        });
+
+        let tool = ShellTool::new(security, test_runtime());
+        let result = tool
+            .execute(json!({
+                "command": format!("touch {}", blocked_path.display()),
+                "approved": true
+            }))
+            .await
+            .unwrap();
+
+        assert!(!result.success);
+        assert_eq!(
+            result.error.as_deref(),
+            Some("Action blocked by SEA Forge: shell command blocked by sea authority")
+        );
+        assert!(!blocked_path.exists());
+
+        std::env::remove_var("SEA_FORGE_SHELL_DECISION");
+        std::env::remove_var("SEA_FORGE_SHELL_REASON");
     }
 
     // ── shell timeout enforcement tests ─────────────────

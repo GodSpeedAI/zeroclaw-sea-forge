@@ -76,6 +76,36 @@ Built by students and members of the Harvard, MIT, and Sundai.Club communities.
   <a href="docs/contributing/README.md">Contribute</a>
 </p>
 
+## SEA-Forge Integration
+
+This fork carries the SEA-Forge authority client and tool-call gates used to enforce governance before side effects.
+
+Current governed tool surfaces:
+
+- `file_write`
+- `file_edit`
+- `shell`
+- `http_request`
+- `web_fetch`
+
+How it works:
+
+- the runtime can still run standalone with no SEA service configured
+- if `SEA_AUTHORITY_URL` is set, the governed tools call:
+  - `POST /policy/authority/onboard`
+  - `POST /policy/authority/evaluate`
+- if SEA returns `deny` or `escalate`, the tool blocks before the write, edit, shell exec, or HTTP dispatch happens
+- the workspace wrapper also exports:
+  - `SEA_CORRELATION_ID`
+  - `SEA_SOURCE_PLATFORM=zeroclaw`
+  - `SEA_WORKSPACE_CONFIG`
+
+This repo is intended to be activated by SEA-Forge as a managed sidecar binary, not by mutating a user's existing ZeroClaw install in place.
+
+SEA-side integration docs live in:
+
+- [SEA `integrations/zeroclaw/README.md`](https://github.com/GodSpeedAI/SEA/blob/dev/integrations/zeroclaw/README.md)
+
 <p align="center">
   <strong>Fast, small, and fully autonomous AI assistant infrastructure</strong><br />
   Deploy anywhere. Swap anything.

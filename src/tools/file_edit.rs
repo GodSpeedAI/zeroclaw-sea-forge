@@ -20,6 +20,13 @@ impl FileEditTool {
     }
 }
 
+fn sea_forge_file_edit_decision() -> Option<String> {
+    crate::security::sea_authority::env_override_reason(
+        "SEA_FORGE_FILE_EDIT_DECISION",
+        "SEA_FORGE_FILE_EDIT_REASON",
+    )
+}
+
 #[async_trait]
 impl Tool for FileEditTool {
     fn name(&self) -> &str {
@@ -73,6 +80,31 @@ impl Tool for FileEditTool {
                 success: false,
                 output: String::new(),
                 error: Some("old_string must not be empty".into()),
+            });
+        }
+
+        if let Some(reason) = sea_forge_file_edit_decision() {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(reason),
+            });
+        }
+
+        if let Some(reason) = crate::security::sea_authority::evaluate_action(
+            &self.security.workspace_dir,
+            "file_edit",
+            "edit",
+            "file",
+            path,
+            json!({"path": path}),
+        )
+        .await?
+        {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(reason),
             });
         }
 
@@ -476,6 +508,46 @@ mod tests {
         assert!(!result.success);
         assert!(result.error.as_ref().unwrap().contains("not allowed"));
 
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    #[tokio::test]
+    async fn file_edit_blocks_when_sea_forge_denies_action() {
+        let dir = std::env::temp_dir().join("zeroclaw_test_file_edit_sea_forge_denied");
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join("blocked.txt"), "hello world")
+            .await
+            .unwrap();
+
+        std::env::set_var("SEA_FORGE_FILE_EDIT_DECISION", "deny");
+        std::env::set_var(
+            "SEA_FORGE_FILE_EDIT_REASON",
+            "edit blocked by sea authority",
+        );
+
+        let tool = FileEditTool::new(test_security(dir.clone()));
+        let result = tool
+            .execute(json!({
+                "path": "blocked.txt",
+                "old_string": "hello",
+                "new_string": "goodbye"
+            }))
+            .await
+            .unwrap();
+
+        assert!(!result.success);
+        assert_eq!(
+            result.error.as_deref(),
+            Some("Action blocked by SEA Forge: edit blocked by sea authority")
+        );
+        let content = tokio::fs::read_to_string(dir.join("blocked.txt"))
+            .await
+            .unwrap();
+        assert_eq!(content, "hello world");
+
+        std::env::remove_var("SEA_FORGE_FILE_EDIT_DECISION");
+        std::env::remove_var("SEA_FORGE_FILE_EDIT_REASON");
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 

@@ -80,6 +80,13 @@ impl WebFetchTool {
     }
 }
 
+fn sea_forge_web_fetch_decision() -> Option<String> {
+    crate::security::sea_authority::env_override_reason(
+        "SEA_FORGE_WEB_FETCH_DECISION",
+        "SEA_FORGE_WEB_FETCH_REASON",
+    )
+}
+
 #[async_trait]
 impl Tool for WebFetchTool {
     fn name(&self) -> &str {
@@ -112,6 +119,31 @@ impl Tool for WebFetchTool {
             .get("url")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'url' parameter"))?;
+
+        if let Some(reason) = sea_forge_web_fetch_decision() {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(reason),
+            });
+        }
+
+        if let Some(reason) = crate::security::sea_authority::evaluate_action(
+            &self.security.workspace_dir,
+            "web_fetch",
+            "http_get",
+            "external_api",
+            url,
+            json!({"method": "GET"}),
+        )
+        .await?
+        {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(reason),
+            });
+        }
 
         if !self.security.can_act() {
             return Ok(ToolResult {
@@ -736,6 +768,30 @@ mod tests {
             .unwrap();
         assert!(!result.success);
         assert!(result.error.unwrap().contains("rate limit"));
+    }
+
+    #[tokio::test]
+    async fn blocks_when_sea_forge_denies_action() {
+        std::env::set_var("SEA_FORGE_WEB_FETCH_DECISION", "deny");
+        std::env::set_var(
+            "SEA_FORGE_WEB_FETCH_REASON",
+            "web fetch blocked by sea authority",
+        );
+
+        let tool = test_tool(vec!["example.com"]);
+        let result = tool
+            .execute(json!({"url": "https://example.com"}))
+            .await
+            .unwrap();
+
+        assert!(!result.success);
+        assert_eq!(
+            result.error.as_deref(),
+            Some("Action blocked by SEA Forge: web fetch blocked by sea authority")
+        );
+
+        std::env::remove_var("SEA_FORGE_WEB_FETCH_DECISION");
+        std::env::remove_var("SEA_FORGE_WEB_FETCH_REASON");
     }
 
     // ── Response truncation ──────────────────────────────────────

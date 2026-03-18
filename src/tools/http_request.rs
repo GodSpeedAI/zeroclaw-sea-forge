@@ -15,6 +15,13 @@ pub struct HttpRequestTool {
     allow_private_hosts: bool,
 }
 
+fn sea_forge_http_request_decision() -> Option<String> {
+    crate::security::sea_authority::env_override_reason(
+        "SEA_FORGE_HTTP_REQUEST_DECISION",
+        "SEA_FORGE_HTTP_REQUEST_REASON",
+    )
+}
+
 impl HttpRequestTool {
     pub fn new(
         security: Arc<SecurityPolicy>,
@@ -208,6 +215,31 @@ impl Tool for HttpRequestTool {
         let method_str = args.get("method").and_then(|v| v.as_str()).unwrap_or("GET");
         let headers_val = args.get("headers").cloned().unwrap_or(json!({}));
         let body = args.get("body").and_then(|v| v.as_str());
+
+        if let Some(reason) = sea_forge_http_request_decision() {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(reason),
+            });
+        }
+
+        if let Some(reason) = crate::security::sea_authority::evaluate_action(
+            &self.security.workspace_dir,
+            "http_request",
+            &format!("http_{}", method_str.to_lowercase()),
+            "external_api",
+            url,
+            json!({"method": method_str}),
+        )
+        .await?
+        {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(reason),
+            });
+        }
 
         if !self.security.can_act() {
             return Ok(ToolResult {
@@ -719,6 +751,30 @@ mod tests {
             .unwrap();
         assert!(!result.success);
         assert!(result.error.unwrap().contains("rate limit"));
+    }
+
+    #[tokio::test]
+    async fn execute_blocks_when_sea_forge_denies_action() {
+        std::env::set_var("SEA_FORGE_HTTP_REQUEST_DECISION", "deny");
+        std::env::set_var(
+            "SEA_FORGE_HTTP_REQUEST_REASON",
+            "http request blocked by sea authority",
+        );
+
+        let tool = test_tool(vec!["example.com"]);
+        let result = tool
+            .execute(json!({"url": "https://example.com"}))
+            .await
+            .unwrap();
+
+        assert!(!result.success);
+        assert_eq!(
+            result.error.as_deref(),
+            Some("Action blocked by SEA Forge: http request blocked by sea authority")
+        );
+
+        std::env::remove_var("SEA_FORGE_HTTP_REQUEST_DECISION");
+        std::env::remove_var("SEA_FORGE_HTTP_REQUEST_REASON");
     }
 
     #[test]

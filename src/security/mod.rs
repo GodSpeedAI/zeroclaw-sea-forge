@@ -39,6 +39,7 @@ pub mod pairing;
 pub mod playbook;
 pub mod policy;
 pub mod prompt_guard;
+pub mod sea_authority;
 pub mod secrets;
 pub mod traits;
 pub mod vulnerability;
