@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { basePath } from '../../lib/basePath';
 import {
   LayoutDashboard,
   MessageSquare,
@@ -10,6 +11,7 @@ import {
   DollarSign,
   Activity,
   Stethoscope,
+  Monitor,
 } from 'lucide-react';
 import { t } from '@/lib/i18n';
 
@@ -24,63 +26,187 @@ const navItems = [
   { to: '/cost', icon: DollarSign, labelKey: 'nav.cost' },
   { to: '/logs', icon: Activity, labelKey: 'nav.logs' },
   { to: '/doctor', icon: Stethoscope, labelKey: 'nav.doctor' },
+  { to: '/canvas', icon: Monitor, labelKey: 'nav.canvas' },
 ];
 
-export default function Sidebar() {
+// Shared nav item sub-component — eliminates duplication between mobile & desktop nav
+function SidebarNavItem({ item, showLabel, showTooltip, onClick }: {
+  item: (typeof navItems)[number];
+  showLabel: boolean;
+  showTooltip: boolean;
+  onClick: () => void;
+}) {
+  const { to, icon: Icon, labelKey } = item;
   return (
-    <aside className="fixed top-0 left-0 h-screen w-60 flex flex-col" style={{ background: 'linear-gradient(180deg, #080818 0%, #050510 100%)' }}>
-      {/* Glow line on right edge */}
-      <div className="sidebar-glow-line" />
+    <NavLink
+      key={to}
+      to={to}
+      end={to === '/'}
+      onClick={onClick}
+      className={({ isActive }) =>
+        [
+          'flex items-center rounded-xl text-sm font-medium transition-all group relative',
+          showLabel ? 'justify-start gap-3 px-3 py-2.5' : 'justify-center w-10 h-10 mx-auto',
+          isActive
+            ? 'text-(--pc-accent-light)'
+            : 'text-(--pc-text-muted) hover:text-(--pc-text-secondary) hover:bg-(--pc-hover)',
+        ].join(' ')
+      }
+      style={({ isActive }) => ({
+        ...(isActive ? { background: 'var(--pc-accent-glow)', border: '1px solid var(--pc-accent-dim)' } : {}),
+      })}
+    >
+      {({ isActive }) => (
+        <>
+          <Icon className={`h-5 w-5 shrink-0 transition-colors ${isActive ? 'text-(--pc-accent)' : 'group-hover:text-(--pc-accent)'}`} />
+          {showLabel && <span className="whitespace-nowrap">{t(labelKey)}</span>}
+          {showTooltip && (
+            <span
+              className="absolute left-full ml-2 px-2 py-1 rounded-md text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-9999"
+              style={{ background: 'var(--pc-bg-elevated)', color: 'var(--pc-text-primary)', border: '1px solid var(--pc-border)' }}
+            >
+              {t(labelKey)}
+            </span>
+          )}
+        </>
+      )}
+    </NavLink>
+  );
+}
 
-      {/* Logo / Title */}
-      <div className="flex items-center gap-3 px-4 py-4 border-b border-[#1a1a3e]/50">
-        <img
-          src="/_app/logo.png"
-          alt="ZeroClaw"
-          className="h-10 w-10 rounded-xl object-cover animate-pulse-glow"
+interface SidebarProps {
+  open: boolean;
+  onClose: () => void;
+  collapsed: boolean;
+}
+
+export default function Sidebar({ open, onClose, collapsed }: SidebarProps) {
+  return (
+    <>
+      {/* Backdrop — mobile only */}
+      {open && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity"
+          onClick={onClose}
+          onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+          role="button"
+          tabIndex={-1}
+          aria-label="Close menu"
         />
-        <span className="text-lg font-bold text-gradient-blue tracking-wide">
-          ZeroClaw
-        </span>
-      </div>
+      )}
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
-        {navItems.map(({ to, icon: Icon, labelKey }, idx) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === '/'}
-            className={({ isActive }) =>
-              [
-                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 animate-slide-in-left group',
-                isActive
-                  ? 'text-white shadow-[0_0_15px_rgba(0,128,255,0.2)]'
-                  : 'text-[#556080] hover:text-white hover:bg-[#0080ff08]',
-              ].join(' ')
-            }
-            style={({ isActive }) => ({
-              animationDelay: `${idx * 40}ms`,
-              ...(isActive ? { background: 'linear-gradient(135deg, rgba(0,128,255,0.15), rgba(0,128,255,0.05))' } : {}),
-            })}
-          >
-            {({ isActive }) => (
-              <>
-                <Icon className={`h-5 w-5 flex-shrink-0 transition-colors duration-300 ${isActive ? 'text-[#0080ff]' : 'group-hover:text-[#0080ff80]'}`} />
-                <span>{t(labelKey)}</span>
-                {isActive && (
-                  <div className="ml-auto h-1.5 w-1.5 rounded-full bg-[#0080ff] glow-dot" />
-                )}
-              </>
-            )}
-          </NavLink>
-        ))}
-      </nav>
+      {/* Desktop sidebar — collapsible */}
+      <aside
+        className="hidden md:flex fixed top-0 left-0 h-screen flex-col border-r z-50 transition-all duration-300 ease-in-out"
+        style={{ background: 'var(--pc-bg-base)', borderColor: 'var(--pc-border)', width: collapsed ? '56px' : '240px' }}
+        aria-label={collapsed ? 'Collapsed sidebar' : 'Main sidebar'}
+      >
+        <SidebarLogo collapsed={collapsed} />
+        <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1">
+          {navItems.map((item) => (
+            <SidebarNavItem
+              key={item.to}
+              item={item}
+              showLabel={!collapsed}
+              showTooltip={collapsed}
+              onClick={onClose}
+            />
+          ))}
+        </nav>
+        <SidebarFooter collapsed={collapsed} layout="desktop" />
+      </aside>
 
-      {/* Footer */}
-      <div className="px-5 py-4 border-t border-[#1a1a3e]/50">
-        <p className="text-[10px] text-[#334060] tracking-wider uppercase">ZeroClaw Runtime</p>
+      {/* Mobile sidebar — slides in/out */}
+      <aside
+        className={[
+          'md:hidden fixed top-0 left-0 h-screen w-60 flex flex-col border-r z-50 transition-transform duration-200 ease-out',
+          open ? 'translate-x-0' : '-translate-x-full',
+        ].join(' ')}
+        style={{ background: 'var(--pc-bg-base)', borderColor: 'var(--pc-border)' }}
+        aria-label="Mobile menu"
+      >
+        <SidebarLogo collapsed={false} />
+        <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+          {navItems.map((item) => (
+            <SidebarNavItem
+              key={item.to}
+              item={item}
+              showLabel
+              showTooltip={false}
+              onClick={onClose}
+            />
+          ))}
+        </nav>
+        <SidebarFooter collapsed={false} layout="mobile" />
+      </aside>
+    </>
+  );
+}
+
+// Extracted sub-components to keep markup DRY
+
+function SidebarLogo({ collapsed }: { collapsed: boolean }) {
+  return (
+    <div
+      className="flex items-center border-b shrink-0 overflow-hidden"
+      style={{
+        borderColor: 'var(--pc-border)',
+        height: '56px',
+        padding: collapsed ? '0 14px' : '0 16px',
+        gap: collapsed ? '0' : '12px',
+      }}
+    >
+      <div className="relative shrink-0">
+        <div className="absolute -inset-1.5 rounded-xl" style={{ background: 'linear-gradient(135deg, rgba(var(--pc-accent-rgb), 0.15), rgba(var(--pc-accent-rgb), 0.05))' }} />
+        <img
+          src={`${basePath}/_app/zeroclaw-trans.png`}
+          alt="ZeroClaw"
+          className="relative h-9 w-9 rounded-xl object-cover"
+          onError={(e) => {
+            e.currentTarget.style.display = 'none';
+          }}
+        />
       </div>
-    </aside>
+      <span
+        className="text-sm font-semibold tracking-wide whitespace-nowrap transition-opacity duration-200"
+        style={{
+          color: 'var(--pc-text-primary)',
+          opacity: collapsed ? 0 : 1,
+          pointerEvents: collapsed ? 'none' : 'auto',
+        }}
+      >
+        ZeroClaw
+      </span>
+    </div>
+  );
+}
+
+function SidebarFooter({ collapsed, layout }: { collapsed: boolean; layout: 'desktop' | 'mobile' }) {
+  if (layout === 'mobile') {
+    return (
+      <div
+        className="px-5 py-4 border-t text-[10px] uppercase tracking-wider"
+        style={{ borderColor: 'var(--pc-border)', color: 'var(--pc-text-faint)' }}
+      >
+        ZeroClaw Runtime
+      </div>
+    );
+  }
+  return (
+    <div
+      className="border-t shrink-0 whitespace-nowrap overflow-hidden transition-opacity duration-200"
+      style={{
+        borderColor: 'var(--pc-border)',
+        padding: collapsed ? '12px 0' : '16px 20px',
+        fontSize: '10px',
+        color: 'var(--pc-text-faint)',
+        textTransform: 'uppercase',
+        letterSpacing: '0.1em',
+        opacity: collapsed ? 0 : 1,
+        textAlign: collapsed ? 'center' : 'left',
+      }}
+    >
+      {!collapsed && 'ZeroClaw Runtime'}
+    </div>
   );
 }

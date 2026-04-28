@@ -176,7 +176,7 @@ fn check_tool_registry(config: &crate::config::Config) -> CheckResult {
 }
 
 fn check_channel_config(config: &crate::config::Config) -> CheckResult {
-    let channels = config.channels_config.channels();
+    let channels = config.channels.channels();
     let configured = channels.iter().filter(|(_, c)| *c).count();
     CheckResult::pass(
         "channels",
@@ -228,7 +228,10 @@ async fn check_memory_roundtrip(config: &crate::config::Config) -> CheckResult {
     let mem = match crate::memory::create_memory(
         &config.memory,
         &config.workspace_dir,
-        config.api_key.as_deref(),
+        config
+            .providers
+            .fallback_provider()
+            .and_then(|e| e.api_key.as_deref()),
     ) {
         Ok(m) => m,
         Err(e) => return CheckResult::fail("memory", format!("cannot create backend: {e}")),
@@ -249,7 +252,7 @@ async fn check_memory_roundtrip(config: &crate::config::Config) -> CheckResult {
         return CheckResult::fail("memory", format!("write failed: {e}"));
     }
 
-    match mem.recall(test_key, 1, None).await {
+    match mem.recall(test_key, 1, None, None, None).await {
         Ok(entries) if !entries.is_empty() => {
             let _ = mem.forget(test_key).await;
             CheckResult::pass("memory", "write/read/delete round-trip OK")

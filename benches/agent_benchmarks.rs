@@ -7,9 +7,9 @@
 //!
 //! Run: `cargo bench`
 //!
-//! Ref: https://github.com/zeroclaw-labs/zeroclaw/issues/618 (item 7)
+//! Ref: <https://github.com/zeroclaw-labs/zeroclaw/issues/618> (item 7)
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 use std::sync::{Arc, Mutex};
 
@@ -76,7 +76,7 @@ impl Provider for BenchProvider {
         _system_prompt: Option<&str>,
         _message: &str,
         _model: &str,
-        _temperature: f64,
+        _temperature: Option<f64>,
     ) -> Result<String> {
         Ok("fallback".into())
     }
@@ -85,7 +85,7 @@ impl Provider for BenchProvider {
         &self,
         _request: ChatRequest<'_>,
         _model: &str,
-        _temperature: f64,
+        _temperature: Option<f64>,
     ) -> Result<ChatResponse> {
         let mut guard = self.responses.lock().unwrap();
         if guard.is_empty() {
@@ -263,7 +263,7 @@ fn bench_memory_operations(c: &mut Criterion) {
     c.bench_function("memory_recall_top10", |b| {
         b.iter(|| {
             rt.block_on(async {
-                mem.recall(black_box("zeroclaw agent"), 10, None)
+                mem.recall(black_box("zeroclaw agent"), 10, None, None, None)
                     .await
                     .unwrap()
             })

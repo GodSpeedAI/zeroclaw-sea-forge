@@ -1,85 +1,92 @@
-import { useState, useEffect } from 'react';
 import {
   Settings,
   Save,
   CheckCircle,
   AlertTriangle,
   ShieldAlert,
+  Code,
+  SlidersHorizontal,
 } from 'lucide-react';
-import { getConfig, putConfig } from '@/lib/api';
 import { t } from '@/lib/i18n';
+import { useConfigState } from './config/useConfigState';
+import ConfigFormView from './config/ConfigFormView';
+import ConfigTomlEditor from './config/ConfigTomlEditor';
 
 export default function Config() {
-  const [config, setConfig] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
-  useEffect(() => {
-    getConfig()
-      .then((data) => {
-        setConfig(typeof data === 'string' ? data : JSON.stringify(data, null, 2));
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const handleSave = async () => {
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      await putConfig(config);
-      setSuccess(t('config.save_success'));
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t('config.save_error'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Auto-dismiss success after 4 seconds
-  useEffect(() => {
-    if (!success) return;
-    const timer = setTimeout(() => setSuccess(null), 4000);
-    return () => clearTimeout(timer);
-  }, [success]);
+  const {
+    parsedConfig,
+    rawToml,
+    mode,
+    loading,
+    saving,
+    error,
+    success,
+    parseError,
+    updateField,
+    switchMode,
+    updateRawToml,
+    save,
+  } = useConfigState();
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="h-8 w-8 border-2 border-[#0080ff30] border-t-[#0080ff] rounded-full animate-spin" />
+        <div className="h-8 w-8 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--pc-border)', borderTopColor: 'var(--pc-accent)' }} />
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
+    <div className="flex flex-col h-full p-6 gap-4 animate-fade-in overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2">
-          <Settings className="h-5 w-5 text-[#0080ff]" />
-          <h2 className="text-sm font-semibold text-white uppercase tracking-wider">{t('config.configuration_title')}</h2>
+          <Settings className="h-5 w-5" style={{ color: 'var(--pc-accent)' }} />
+          <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--pc-text-primary)' }}>{t('config.configuration_title')}</h2>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="btn-electric flex items-center gap-2 text-sm px-4 py-2"
-        >
-          <Save className="h-4 w-4" />
-          {saving ? t('config.saving') : t('config.save')}
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Mode toggle */}
+          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--pc-border)' }}>
+            <button
+              type="button"
+              onClick={() => switchMode('form')}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors"
+              style={{
+                background: mode === 'form' ? 'var(--pc-accent)' : 'var(--pc-bg-surface)',
+                color: mode === 'form' ? 'white' : 'var(--pc-text-secondary)',
+              }}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              {t('config.mode.form')}
+            </button>
+            <button
+              type="button"
+              onClick={() => switchMode('advanced')}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors"
+              style={{
+                background: mode === 'advanced' ? 'var(--pc-accent)' : 'var(--pc-bg-surface)',
+                color: mode === 'advanced' ? 'white' : 'var(--pc-text-secondary)',
+              }}
+            >
+              <Code className="h-3.5 w-3.5" />
+              {t('config.mode.advanced')}
+            </button>
+          </div>
+
+          <button onClick={save} disabled={saving} className="btn-electric flex items-center gap-2 text-sm px-4 py-2">
+            <Save className="h-4 w-4" />{saving ? t('config.saving') : t('config.save')}
+          </button>
+        </div>
       </div>
 
       {/* Sensitive fields note */}
-      <div className="flex items-start gap-3 rounded-xl p-4 border border-[#ffaa0020]" style={{ background: 'rgba(255,170,0,0.05)' }}>
-        <ShieldAlert className="h-5 w-5 text-[#ffaa00] flex-shrink-0 mt-0.5" />
+      <div className="flex items-start gap-3 rounded-2xl p-4 border flex-shrink-0" style={{ borderColor: 'rgba(255, 170, 0, 0.2)', background: 'rgba(255, 170, 0, 0.05)' }}>
+        <ShieldAlert className="h-5 w-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--color-status-warning)' }} />
         <div>
-          <p className="text-sm text-[#ffaa00] font-medium">
+          <p className="text-sm font-medium" style={{ color: 'var(--color-status-warning)' }}>
             {t('config.sensitive_title')}
           </p>
-          <p className="text-sm text-[#ffaa0080] mt-0.5">
+          <p className="text-sm mt-0.5" style={{ color: 'rgba(255, 170, 0, 0.7)' }}>
             {t('config.sensitive_hint')}
           </p>
         </div>
@@ -87,38 +94,26 @@ export default function Config() {
 
       {/* Success message */}
       {success && (
-        <div className="flex items-center gap-2 rounded-xl p-3 border border-[#00e68a30] animate-fade-in" style={{ background: 'rgba(0,230,138,0.06)' }}>
-          <CheckCircle className="h-4 w-4 text-[#00e68a] flex-shrink-0" />
-          <span className="text-sm text-[#00e68a]">{success}</span>
+        <div className="flex items-center gap-2 rounded-xl p-3 border animate-fade-in flex-shrink-0" style={{ borderColor: 'rgba(0, 230, 138, 0.2)', background: 'rgba(0, 230, 138, 0.06)' }}>
+          <CheckCircle className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--color-status-success)' }} />
+          <span className="text-sm" style={{ color: 'var(--color-status-success)' }}>{success}</span>
         </div>
       )}
 
-      {/* Error message */}
-      {error && (
-        <div className="flex items-center gap-2 rounded-xl p-3 border border-[#ff446630] animate-fade-in" style={{ background: 'rgba(255,68,102,0.06)' }}>
-          <AlertTriangle className="h-4 w-4 text-[#ff4466] flex-shrink-0" />
-          <span className="text-sm text-[#ff6680]">{error}</span>
+      {/* Error / parse error message */}
+      {(error || parseError) && (
+        <div className="flex items-center gap-2 rounded-xl p-3 border animate-fade-in flex-shrink-0" style={{ borderColor: 'rgba(239, 68, 68, 0.2)', background: 'rgba(239, 68, 68, 0.06)' }}>
+          <AlertTriangle className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--color-status-error)' }} />
+          <span className="text-sm" style={{ color: 'var(--color-status-error)' }}>{error || parseError}</span>
         </div>
       )}
 
-      {/* Config Editor */}
-      <div className="glass-card overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1a1a3e]" style={{ background: 'rgba(0,128,255,0.03)' }}>
-          <span className="text-[10px] text-[#334060] font-semibold uppercase tracking-wider">
-            {t('config.toml_label')}
-          </span>
-          <span className="text-[10px] text-[#334060]">
-            {config.split('\n').length} {t('config.lines')}
-          </span>
-        </div>
-        <textarea
-          value={config}
-          onChange={(e) => setConfig(e.target.value)}
-          spellCheck={false}
-          className="w-full min-h-[500px] text-[#8892a8] font-mono text-sm p-4 resize-y focus:outline-none focus:ring-2 focus:ring-[#0080ff40] focus:ring-inset"
-          style={{ background: 'rgba(5,5,16,0.8)', tabSize: 4 }}
-        />
-      </div>
+      {/* Content: Form or TOML editor */}
+      {mode === 'form' ? (
+        <ConfigFormView config={parsedConfig} onUpdate={updateField} />
+      ) : (
+        <ConfigTomlEditor value={rawToml} onChange={updateRawToml} />
+      )}
     </div>
   );
 }
